@@ -90,6 +90,17 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 .star{border:1.5px solid var(--line);background:transparent;border-radius:999px;padding:5px 12px;cursor:pointer;font-size:.85rem;font-weight:600}
 .star[aria-pressed="true"]{background:var(--stamp);border-color:var(--stamp);color:var(--stamp-ink)}
 .tag{display:inline-block;font-family:var(--mono);font-size:.7rem;border:1px solid var(--muted);color:var(--muted);border-radius:6px;padding:1px 6px;margin-left:6px;vertical-align:middle}
+.tabs{display:flex;gap:8px;flex-wrap:wrap}
+.badges{display:flex;gap:6px;flex-wrap:wrap}
+.badges:empty{display:none}
+.badge{font-size:.75rem;font-weight:600;border-radius:6px;padding:2px 8px;border:1px solid var(--line);color:var(--muted)}
+.badge.new{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.badge.ok{color:var(--ok);border-color:var(--ok)}
+.badge.off{color:var(--warn);border-color:var(--warn)}
+.switch{display:flex;align-items:flex-start;gap:10px;cursor:pointer}
+.switch input{width:20px;height:20px;margin-top:2px;accent-color:var(--accent);flex:none}
+.switch span{font-size:.95rem;min-width:0}
+.switch small{display:block;color:var(--muted);font-size:.82rem}
 .empty{padding:28px 16px;text-align:center;color:var(--muted)}
 @media (prefers-reduced-motion:no-preference){.ticket{animation:in .25s ease-out both}@keyframes in{from{opacity:.001;transform:translateY(6px)}to{opacity:1;transform:none}}}
 </style>
@@ -140,6 +151,12 @@ input[type=range]{width:100%;accent-color:var(--accent)}
         <span class="lbl">Categorie</span>
         <div class="chips" id="cats"></div>
       </div>
+      <div class="field">
+        <span class="lbl">Cosa ti segnalo</span>
+        <label class="switch"><input type="checkbox" id="nNew"><span>Nuovi eventi<small>Eventi messi in vendita da meno di 7 giorni o con vendita in arrivo.</small></span></label>
+        <label class="switch"><input type="checkbox" id="nBack"><span>Biglietti di nuovo disponibili<small>Quando un evento con vendita chiusa o esaurito torna in vendita.</small></span></label>
+        <label class="switch"><input type="checkbox" id="nOnly"><span>Solo eventi con biglietti<small>Niente avvisi per eventi già esauriti. Ticketmaster non distingue tra esaurito e vendita chiusa.</small></span></label>
+      </div>
       <div class="row">
         <button class="btn grow" id="test" type="button">Prova una notifica</button>
         <button class="btn grow" id="refresh" type="button">Aggiorna ora</button>
@@ -149,6 +166,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
   </details>
 
   <div id="notice" class="notice" hidden></div>
+  <div class="tabs" id="tabs"></div>
   <div class="status"><span id="count">—</span><span class="mono" id="last"></span></div>
   <div class="list" id="list"></div>
 </div>
@@ -163,8 +181,10 @@ input[type=range]{width:100%;accent-color:var(--accent)}
     {id:'KZFzniwnSyZfZ7v7nn',label:'Cinema'},
     {id:'KZFzniwnSyZfZ7v7n1',label:'Altro'}
   ];
-  var DEF={key:'',lat:null,lng:null,place:'',radius:30,days:14,every:30,cats:CATS.map(function(c){return c.id}),notif:false,seen:[],saved:{},reminded:[]};
+  var DEF={key:'',lat:null,lng:null,place:'',radius:30,days:14,every:30,cats:CATS.map(function(c){return c.id}),notif:false,known:{},rebase:true,saved:{},reminded:[],view:'all',nNew:true,nBack:true,nOnly:true};
   var S=load();
+  if(S.seen&&S.seen.length){S.seen.forEach(function(id){if(!S.known[id])S.known[id]={status:null};});}
+  delete S.seen;
   var events=[], timer=null, sample=false;
 
   function load(){try{var r=JSON.parse(localStorage.getItem('eventi-vicini')||'{}');return Object.assign({},DEF,r);}catch(e){return Object.assign({},DEF);}}
@@ -173,7 +193,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
   function el(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e;}
 
   /* ---------- posizione ---------- */
-  function setPlace(lat,lng,name){S.lat=lat;S.lng=lng;S.place=name||(lat.toFixed(2)+', '+lng.toFixed(2));save();paintHeader();refresh(false);}
+  function setPlace(lat,lng,name){S.lat=lat;S.lng=lng;S.place=name||(lat.toFixed(2)+', '+lng.toFixed(2));S.rebase=true;save();paintHeader();refresh(false);}
   function useGps(){
     if(!navigator.geolocation){showNotice('Il browser non supporta la geolocalizzazione. Scrivi una città.',true);return;}
     $('gps').textContent='Cerco la posizione…';
@@ -202,6 +222,12 @@ input[type=range]{width:100%;accent-color:var(--accent)}
   function iso(d){return d.toISOString().replace(/\.\d{3}Z$/,'Z');}
   function km(a,b,c,d){var R=6371,t=Math.PI/180,dl=(c-a)*t,dn=(d-b)*t;
     var x=Math.sin(dl/2)*Math.sin(dl/2)+Math.cos(a*t)*Math.cos(c*t)*Math.sin(dn/2)*Math.sin(dn/2);return 2*R*Math.asin(Math.sqrt(x));}
+  function saleStart(ev){
+    var p=ev.sales&&ev.sales.public;
+    if(!p||!p.startDateTime)return null;
+    var d=new Date(p.startDateTime);
+    return isNaN(d.getTime())?null:d;
+  }
   function parse(ev){
     var s=ev.dates&&ev.dates.start||{},start=null;
     if(s.dateTime)start=new Date(s.dateTime);else if(s.localDate)start=new Date(s.localDate+'T'+(s.localTime||'00:00:00'));
@@ -210,7 +236,9 @@ input[type=range]{width:100%;accent-color:var(--accent)}
     if(loc.latitude&&S.lat!=null)dist=km(S.lat,S.lng,parseFloat(loc.latitude),parseFloat(loc.longitude));
     var cl=ev.classifications&&ev.classifications[0];
     return {id:ev.id,name:ev.name,url:ev.url,start:start,timeKnown:!!s.localTime,venue:v.name||'',city:v.city&&v.city.name||'',
-      dist:dist,cat:cl&&cl.segment&&cl.segment.name||''};
+      dist:dist,cat:cl&&cl.segment&&cl.segment.name||'',
+      status:ev.dates&&ev.dates.status&&ev.dates.status.code||'',
+      saleStart:saleStart(ev)};
   }
   function fetchEvents(){
     if(!S.key||S.lat==null)return Promise.resolve(null);
@@ -240,10 +268,18 @@ input[type=range]{width:100%;accent-color:var(--accent)}
     ];
   }
 
+  function decorate(l){
+    var now=Date.now(),D=864e5;
+    l[0].status='onsale';l[0].saleStart=new Date(now-2*D);
+    l[1].status='onsale';l[1].saleStart=new Date(now-60*D);
+    l[2].status='offsale';l[2].saleStart=new Date(now-40*D);
+    l[3].status='onsale';l[3].saleStart=new Date(now+3*D);
+    return l;
+  }
   function refresh(fromTimer){
     hideNotice();
     if(!S.key||S.lat==null){
-      sample=true;events=sampleEvents();render();
+      sample=true;events=decorate(sampleEvents());render();
       showNotice(S.lat==null?'Imposta la tua posizione dalle Impostazioni per cercare eventi vicino a te. Sotto vedi eventi di esempio.'
         :'Inserisci la chiave API Ticketmaster dalle Impostazioni per vedere eventi reali. Sotto vedi eventi di esempio.',false);
       return;
@@ -252,7 +288,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
     fetchEvents().then(function(list){
       events=list||[];render();
       $('last').textContent='aggiornato '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
-      checkNotifications(events,fromTimer);
+      checkNotifications(track(events));
     }).catch(function(err){
       $('count').textContent='—';
       showNotice((err&&err.message||'Errore di rete.')+' Riprova tra poco.',true);
@@ -260,25 +296,46 @@ input[type=range]{width:100%;accent-color:var(--accent)}
   }
 
   /* ---------- notifiche ---------- */
-  function notify(title,body,url){
+  function notify(title,body,url,tag){
     if(!('Notification' in window)||Notification.permission!=='granted')return;
-    var opts={body:body,tag:'eventi-vicini',data:{url:url||''}};
+    var opts={body:body,tag:tag||'eventi-vicini',data:{url:url||''}};
     var p=('serviceWorker' in navigator)?navigator.serviceWorker.getRegistration():Promise.resolve(null);
     p.then(function(reg){
       if(reg&&reg.showNotification)return reg.showNotification(title,opts);
       var n=new Notification(title,opts);n.onclick=function(){window.focus();if(url)window.open(url,'_blank');n.close();};
     }).catch(function(){try{new Notification(title,opts);}catch(e){}});
   }
-  function checkNotifications(list){
+  /* Nuovo = vendita aperta da meno di 7 giorni oppure non ancora aperta. */
+  function isNew(e){return !!e.saleStart&&e.saleStart.getTime()>Date.now()-7*864e5;}
+  /* Confronta l'elenco con quello già visto: trova eventi mai visti e biglietti tornati disponibili. */
+  function track(list){
+    var base=S.rebase||Object.keys(S.known).length===0,fresh=[],back=[];
+    list.forEach(function(e){
+      var k=S.known[e.id];
+      if(!k){S.known[e.id]={status:e.status};if(!base)fresh.push(e);}
+      else{
+        if(!base&&k.status&&k.status!=='onsale'&&e.status==='onsale')back.push(e);
+        k.status=e.status;
+      }
+    });
+    S.rebase=false;
+    var ids=Object.keys(S.known);
+    if(ids.length>3000)ids.slice(0,ids.length-2500).forEach(function(id){delete S.known[id];});
+    save();
+    return {fresh:fresh,back:back};
+  }
+  function checkNotifications(res){
     if(!S.notif)return;
-    var firstRun=S.seen.length===0;
-    var fresh=list.filter(function(e){return S.seen.indexOf(e.id)<0;});
-    list.forEach(function(e){if(S.seen.indexOf(e.id)<0)S.seen.push(e.id);});
-    if(S.seen.length>1500)S.seen=S.seen.slice(-1000);
-    if(!firstRun&&fresh.length){
+    var fresh=res.fresh.filter(function(e){return isNew(e)&&(!S.nOnly||e.status==='onsale');});
+    if(S.nNew&&fresh.length){
       var names=fresh.slice(0,2).map(function(e){return e.name;}).join(' · ');
       notify(fresh.length===1?'Nuovo evento vicino a '+S.place:fresh.length+' nuovi eventi vicino a '+S.place,
-        names+(fresh.length>2?' e altri…':''),fresh[0].url);
+        names+(fresh.length>2?' e altri…':''),fresh[0].url,'eventi-nuovi');
+    }
+    var back=res.back;
+    if(S.nBack&&back.length){
+      notify(back.length===1?'Biglietti di nuovo disponibili':back.length+' eventi con biglietti di nuovo disponibili',
+        back.slice(0,2).map(function(e){return e.name;}).join(' · ')+(back.length>2?' e altri…':''),back[0].url,'eventi-disponibili');
     }
     var now=Date.now();
     Object.keys(S.saved).forEach(function(id){
@@ -298,7 +355,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
     if(S.notif){S.notif=false;save();paintHeader();startTimer();return;}
     if(!('Notification' in window)){showNotice('Questo browser non supporta le notifiche.',true);return;}
     var go=function(perm){
-      if(perm==='granted'){S.notif=true;S.seen=[];save();paintHeader();startTimer();refresh(true);
+      if(perm==='granted'){S.notif=true;S.rebase=true;save();paintHeader();startTimer();refresh(true);
         notify('Avvisi attivi','Ti avviso quando compaiono nuovi eventi vicino a '+(S.place||'te')+'.');}
       else showNotice('Notifiche bloccate. Abilitale dalle impostazioni del sito nel browser.',true);
     };
@@ -316,10 +373,11 @@ input[type=range]{width:100%;accent-color:var(--accent)}
   }
   function render(){
     var list=$('list');list.textContent='';
-    $('count').textContent=events.length?events.length+(events.length===1?' evento':' eventi')+(sample?' di esempio':''):'Nessun evento';
-    if(!events.length){list.appendChild(el('div','empty','Nessun evento trovato in questo raggio. Prova ad allargarlo o ad aggiungere categorie.'));return;}
+    var shown=events.filter(function(e){return S.view==='new'?isNew(e):S.view==='avail'?e.status==='onsale':true;});
+    $('count').textContent=shown.length?shown.length+(shown.length===1?' evento':' eventi')+(sample?' di esempio':''):'Nessun evento';
+    if(!shown.length){list.appendChild(el('div','empty',S.view==='new'?'Nessun evento nuovo negli ultimi 7 giorni in questo raggio.':S.view==='avail'?'Nessun evento con biglietti disponibili in questo raggio.':'Nessun evento trovato in questo raggio. Prova ad allargarlo o ad aggiungere categorie.'));return;}
     var cur='';
-    events.forEach(function(e){
+    shown.forEach(function(e){
       var lab=dayLabel(e.start);
       if(lab!==cur){cur=lab;list.appendChild(el('div','day',lab));}
       var t=el('article','ticket'),stub=el('div','stub');
@@ -331,6 +389,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
       b.appendChild(cat);
       b.appendChild(el('div','name',e.name));
       b.appendChild(el('div','meta',[e.venue,e.city].filter(Boolean).join(' · ')));
+      b.appendChild(badges(e));
       var acts=el('div','acts'),left=el('div');
       if(e.url){var a=el('a',null,'Biglietti e info');a.href=e.url;a.target='_blank';a.rel='noopener';left.appendChild(a);}
       else left.appendChild(el('span','dist','—'));
@@ -346,6 +405,27 @@ input[type=range]{width:100%;accent-color:var(--accent)}
       });
       right.appendChild(st);acts.appendChild(left);acts.appendChild(right);b.appendChild(acts);
       t.appendChild(stub);t.appendChild(b);list.appendChild(t);
+    });
+  }
+  function badges(e){
+    var w=el('div','badges');
+    if(isNew(e))w.appendChild(el('span','badge new','Nuovo'));
+    if(e.saleStart&&e.saleStart.getTime()>Date.now())
+      w.appendChild(el('span','badge',"Vendita dal "+e.saleStart.toLocaleDateString('it-IT',{day:'numeric',month:'short'})));
+    else if(e.status==='onsale')w.appendChild(el('span','badge ok','Biglietti disponibili'));
+    else if(e.status==='offsale')w.appendChild(el('span','badge off','Vendita chiusa o esaurito'));
+    else if(e.status==='cancelled')w.appendChild(el('span','badge off','Annullato'));
+    else if(e.status==='postponed')w.appendChild(el('span','badge off','Rinviato'));
+    else if(e.status==='rescheduled')w.appendChild(el('span','badge','Data cambiata'));
+    return w;
+  }
+  function paintTabs(){
+    var box=$('tabs');box.textContent='';
+    [['all','Tutti'],['new','Nuovi'],['avail','Con biglietti']].forEach(function(t){
+      var b=el('button','chip',t[1]);b.type='button';
+      b.setAttribute('aria-pressed',S.view===t[0]?'true':'false');
+      b.addEventListener('click',function(){S.view=t[0];save();paintTabs();render();});
+      box.appendChild(b);
     });
   }
   function paintHeader(){
@@ -364,7 +444,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
       b.addEventListener('click',function(){
         var i=S.cats.indexOf(c.id);
         if(i>=0){if(S.cats.length>1)S.cats.splice(i,1);}else S.cats.push(c.id);
-        save();paintCats();S.seen=[];refresh(false);
+        save();paintCats();S.rebase=true;refresh(false);
       });
       box.appendChild(b);
     });
@@ -374,11 +454,15 @@ input[type=range]{width:100%;accent-color:var(--accent)}
     $('key').value=S.key;$('radius').value=S.radius;$('radiusVal').textContent=S.radius+' km';
     $('days').value=String(S.days);$('every').value=String(S.every);
     if(!S.key||S.lat==null)$('settingsPanel').open=true;
-    paintHeader();paintCats();
-    $('key').addEventListener('change',function(){S.key=this.value.trim();S.seen=[];save();refresh(false);});
+    paintHeader();paintCats();paintTabs();
+    ['nNew','nBack','nOnly'].forEach(function(id){
+      var c=$(id);c.checked=!!S[id];
+      c.addEventListener('change',function(){S[id]=c.checked;save();});
+    });
+    $('key').addEventListener('change',function(){S.key=this.value.trim();S.rebase=true;save();refresh(false);});
     $('radius').addEventListener('input',function(){S.radius=+this.value;$('radiusVal').textContent=S.radius+' km';paintHeader();});
-    $('radius').addEventListener('change',function(){save();S.seen=[];refresh(false);});
-    $('days').addEventListener('change',function(){S.days=+this.value;save();refresh(false);});
+    $('radius').addEventListener('change',function(){save();S.rebase=true;refresh(false);});
+    $('days').addEventListener('change',function(){S.days=+this.value;S.rebase=true;save();refresh(false);});
     $('every').addEventListener('change',function(){S.every=+this.value;save();startTimer();});
     $('gps').addEventListener('click',useGps);
     $('cityGo').addEventListener('click',searchCity);
