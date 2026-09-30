@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Eventi Vicini</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Public+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: colonna singola in stile locandina. Ogni evento è un biglietto con matrice a sinistra (data) e dettagli a destra. */
+:root{
+  --paper:#eef1f4; --card:#ffffff; --ink:#10202e; --muted:#5b6b7a; --line:#d5dce3;
+  --accent:#2b4eff; --accent-ink:#ffffff; --stamp:#f2b31b; --stamp-ink:#241a00; --ok:#1b7f4b; --warn:#b4540a;
+  --display:"Bricolage Grotesque","Trebuchet MS",sans-serif;
+  --body:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"DM Mono",ui-monospace,Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#0d1620; --card:#152230; --ink:#e8eef4; --muted:#93a4b5; --line:#263646;
+  --accent:#7d95ff; --accent-ink:#0b1220; --stamp:#f2b31b; --stamp-ink:#241a00; --ok:#5fd394; --warn:#f0a35e; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --paper:#0d1620; --card:#152230; --ink:#e8eef4; --muted:#93a4b5; --line:#263646;
+  --accent:#7d95ff; --accent-ink:#0b1220; --stamp:#f2b31b; --stamp-ink:#241a00; --ok:#5fd394; --warn:#f0a35e; color-scheme:dark;}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 16px/1.5 var(--body);
+  padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+.wrap{max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+h1,h2{font-family:var(--display);margin:0;text-wrap:balance}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+header{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;padding-top:8px}
+h1{font-size:clamp(2rem,8vw,2.75rem);line-height:1;font-weight:800;letter-spacing:-.02em}
+.where{margin:6px 0 0;color:var(--muted);font-size:.95rem;min-width:0}
+.bell{flex:none;display:inline-flex;align-items:center;gap:8px;border:1.5px solid var(--line);background:var(--card);
+  border-radius:999px;padding:8px 14px;cursor:pointer;font-weight:600;font-size:.9rem}
+.bell[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
+.bell[aria-pressed="true"] .dot{background:var(--stamp)}
+
+.panel{background:var(--card);border:1px solid var(--line);border-radius:14px}
+details.panel>summary{list-style:none;cursor:pointer;padding:14px 16px;font-weight:600;display:flex;justify-content:space-between;align-items:center}
+details.panel>summary::-webkit-details-marker{display:none}
+details.panel>summary::after{content:"+";font-family:var(--mono);font-size:1.25rem;color:var(--muted)}
+details.panel[open]>summary::after{content:"–"}
+.settings{padding:0 16px 16px;display:grid;gap:16px}
+.field{display:grid;gap:6px;min-width:0}
+.field>label,.field>.lbl{font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row>*{min-width:0}
+input[type=text],input[type=password],select{width:100%;background:var(--paper);border:1.5px solid var(--line);border-radius:10px;padding:10px 12px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.btn{border:1.5px solid var(--line);background:var(--paper);border-radius:10px;padding:10px 14px;cursor:pointer;font-weight:600}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.grow{flex:1 1 140px}
+.hint{font-size:.85rem;color:var(--muted);margin:0}
+.hint a{color:var(--accent)}
+.val{font-family:var(--mono);font-weight:500}
+
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{border:1.5px solid var(--line);background:var(--card);border-radius:999px;padding:7px 14px;cursor:pointer;font-weight:500;font-size:.9rem}
+.chip[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+
+.status{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:.85rem;color:var(--muted)}
+.status .mono{font-family:var(--mono)}
+.notice{padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--card);font-size:.92rem}
+.notice.warn{border-color:var(--warn);color:var(--warn)}
+
+.day{font-family:var(--display);font-weight:800;font-size:1.05rem;text-transform:capitalize;margin:8px 0 -4px}
+.list{display:flex;flex-direction:column;gap:12px}
+.ticket{display:grid;grid-template-columns:76px 1fr;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.stub{background:var(--stamp);color:var(--stamp-ink);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px 6px;
+  border-right:2px dashed color-mix(in srgb,var(--stamp-ink) 45%,transparent)}
+.stub .n{font-family:var(--display);font-weight:800;font-size:2rem;line-height:1}
+.stub .m{font-family:var(--mono);font-size:.75rem;text-transform:uppercase;letter-spacing:.08em}
+.stub .t{font-family:var(--mono);font-size:.8rem;margin-top:6px;font-weight:500}
+.body{padding:12px 14px;display:grid;gap:6px;min-width:0}
+.cat{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);font-weight:600}
+.name{font-family:var(--display);font-weight:600;font-size:1.12rem;line-height:1.2;overflow-wrap:anywhere}
+.meta{color:var(--muted);font-size:.9rem;overflow-wrap:anywhere}
+.acts{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:2px}
+.acts a{color:var(--accent);font-weight:600;font-size:.9rem}
+.dist{font-family:var(--mono);font-size:.85rem;color:var(--muted)}
+.star{border:1.5px solid var(--line);background:transparent;border-radius:999px;padding:5px 12px;cursor:pointer;font-size:.85rem;font-weight:600}
+.star[aria-pressed="true"]{background:var(--stamp);border-color:var(--stamp);color:var(--stamp-ink)}
+.tag{display:inline-block;font-family:var(--mono);font-size:.7rem;border:1px solid var(--muted);color:var(--muted);border-radius:6px;padding:1px 6px;margin-left:6px;vertical-align:middle}
+.empty{padding:28px 16px;text-align:center;color:var(--muted)}
+@media (prefers-reduced-motion:no-preference){.ticket{animation:in .25s ease-out both}@keyframes in{from{opacity:.001;transform:translateY(6px)}to{opacity:1;transform:none}}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div style="min-width:0">
+      <h1>Eventi Vicini</h1>
+      <p class="where" id="where">Posizione non impostata</p>
+    </div>
+    <button class="bell" id="bell" aria-pressed="false" type="button"><span class="dot"></span><span id="bellText">Avvisi spenti</span></button>
+  </header>
+
+  <details class="panel" id="settingsPanel">
+    <summary>Impostazioni</summary>
+    <div class="settings">
+      <div class="field">
+        <label for="key">Chiave API Ticketmaster</label>
+        <input id="key" type="password" autocomplete="off" placeholder="Incolla la tua chiave">
+        <p class="hint">Gratuita: registrati su <a href="https://developer.ticketmaster.com/" target="_blank" rel="noopener">developer.ticketmaster.com</a> e copia la Consumer Key. Senza chiave vedi solo eventi di esempio.</p>
+      </div>
+      <div class="field">
+        <span class="lbl">Dove cercare</span>
+        <div class="row">
+          <button class="btn primary grow" id="gps" type="button">Usa la mia posizione</button>
+        </div>
+        <div class="row">
+          <input class="grow" id="city" type="text" placeholder="Oppure scrivi una città, es. Torino" autocomplete="off">
+          <button class="btn" id="cityGo" type="button">Cerca</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="radius">Raggio: <span class="val" id="radiusVal">30 km</span></label>
+        <input id="radius" type="range" min="5" max="100" step="5" value="30">
+      </div>
+      <div class="row">
+        <div class="field grow">
+          <label for="days">Prossimi</label>
+          <select id="days"><option value="7">7 giorni</option><option value="14">14 giorni</option><option value="30">30 giorni</option><option value="60">60 giorni</option></select>
+        </div>
+        <div class="field grow">
+          <label for="every">Controlla ogni</label>
+          <select id="every"><option value="15">15 minuti</option><option value="30">30 minuti</option><option value="60">1 ora</option></select>
+        </div>
+      </div>
+      <div class="field">
+        <span class="lbl">Categorie</span>
+        <div class="chips" id="cats"></div>
+      </div>
+      <div class="row">
+        <button class="btn grow" id="test" type="button">Prova una notifica</button>
+        <button class="btn grow" id="refresh" type="button">Aggiorna ora</button>
+      </div>
+      <p class="hint">Le notifiche arrivano solo mentre questa pagina resta aperta in una scheda del browser. Con la stella su un evento ricevi anche un promemoria nelle 3 ore prima dell'inizio.</p>
+    </div>
+  </details>
+
+  <div id="notice" class="notice" hidden></div>
+  <div class="status"><span id="count">—</span><span class="mono" id="last"></span></div>
+  <div class="list" id="list"></div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  var CATS=[
+    {id:'KZFzniwnSyZfZ7v7nJ',label:'Musica'},
+    {id:'KZFzniwnSyZfZ7v7nE',label:'Sport'},
+    {id:'KZFzniwnSyZfZ7v7na',label:'Arte e teatro'},
+    {id:'KZFzniwnSyZfZ7v7nn',label:'Cinema'},
+    {id:'KZFzniwnSyZfZ7v7n1',label:'Altro'}
+  ];
+  var DEF={key:'',lat:null,lng:null,place:'',radius:30,days:14,every:30,cats:CATS.map(function(c){return c.id}),notif:false,seen:[],saved:{},reminded:[]};
+  var S=load();
+  var events=[], timer=null, sample=false;
+
+  function load(){try{var r=JSON.parse(localStorage.getItem('eventi-vicini')||'{}');return Object.assign({},DEF,r);}catch(e){return Object.assign({},DEF);}}
+  function save(){try{localStorage.setItem('eventi-vicini',JSON.stringify(S));}catch(e){}}
+  function $(id){return document.getElementById(id);}
+  function el(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e;}
+
+  /* ---------- posizione ---------- */
+  function setPlace(lat,lng,name){S.lat=lat;S.lng=lng;S.place=name||(lat.toFixed(2)+', '+lng.toFixed(2));save();paintHeader();refresh(false);}
+  function useGps(){
+    if(!navigator.geolocation){showNotice('Il browser non supporta la geolocalizzazione. Scrivi una città.',true);return;}
+    $('gps').textContent='Cerco la posizione…';
+    navigator.geolocation.getCurrentPosition(function(p){
+      $('gps').textContent='Usa la mia posizione';
+      var lat=p.coords.latitude,lng=p.coords.longitude;
+      fetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=10&lat='+lat+'&lon='+lng+'&accept-language=it')
+        .then(function(r){return r.json()}).then(function(j){
+          var a=j.address||{};setPlace(lat,lng,a.city||a.town||a.village||a.municipality||j.name);
+        }).catch(function(){setPlace(lat,lng);});
+    },function(){
+      $('gps').textContent='Usa la mia posizione';
+      showNotice('Posizione non concessa. Consenti l\'accesso nel browser oppure scrivi una città.',true);
+    },{enableHighAccuracy:false,timeout:12000,maximumAge:600000});
+  }
+  function searchCity(){
+    var q=$('city').value.trim();if(!q)return;
+    fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=it&q='+encodeURIComponent(q))
+      .then(function(r){return r.json()}).then(function(j){
+        if(!j.length){showNotice('Nessuna città trovata per "'+q+'".',true);return;}
+        setPlace(parseFloat(j[0].lat),parseFloat(j[0].lon),j[0].name||q);
+      }).catch(function(){showNotice('Ricerca città non riuscita. Controlla la connessione.',true);});
+  }
+
+  /* ---------- eventi ---------- */
+  function iso(d){return d.toISOString().replace(/\.\d{3}Z$/,'Z');}
+  function km(a,b,c,d){var R=6371,t=Math.PI/180,dl=(c-a)*t,dn=(d-b)*t;
+    var x=Math.sin(dl/2)*Math.sin(dl/2)+Math.cos(a*t)*Math.cos(c*t)*Math.sin(dn/2)*Math.sin(dn/2);return 2*R*Math.asin(Math.sqrt(x));}
+  function parse(ev){
+    var s=ev.dates&&ev.dates.start||{},start=null;
+    if(s.dateTime)start=new Date(s.dateTime);else if(s.localDate)start=new Date(s.localDate+'T'+(s.localTime||'00:00:00'));
+    var v=ev._embedded&&ev._embedded.venues&&ev._embedded.venues[0]||{};
+    var loc=v.location||{},dist=null;
+    if(loc.latitude&&S.lat!=null)dist=km(S.lat,S.lng,parseFloat(loc.latitude),parseFloat(loc.longitude));
+    var cl=ev.classifications&&ev.classifications[0];
+    return {id:ev.id,name:ev.name,url:ev.url,start:start,timeKnown:!!s.localTime,venue:v.name||'',city:v.city&&v.city.name||'',
+      dist:dist,cat:cl&&cl.segment&&cl.segment.name||''};
+  }
+  function fetchEvents(){
+    if(!S.key||S.lat==null)return Promise.resolve(null);
+    var from=new Date(),to=new Date(Date.now()+S.days*864e5);
+    var u='https://app.ticketmaster.com/discovery/v2/events.json?size=100&sort=date,asc&unit=km'
+      +'&apikey='+encodeURIComponent(S.key)+'&latlong='+S.lat+','+S.lng+'&radius='+S.radius
+      +'&startDateTime='+iso(from)+'&endDateTime='+iso(to);
+    if(S.cats.length&&S.cats.length<CATS.length)u+='&classificationId='+S.cats.join(',');
+    return fetch(u).then(function(r){
+      if(r.status===401)throw new Error('La chiave API non è valida.');
+      if(!r.ok)throw new Error('Il servizio eventi ha risposto con errore '+r.status+'.');
+      return r.json();
+    }).then(function(j){
+      var raw=j._embedded&&j._embedded.events||[],seen={},out=[];
+      raw.map(parse).forEach(function(e){if(e.start&&!seen[e.id]){seen[e.id]=1;out.push(e);}});
+      return out;
+    });
+  }
+  function sampleEvents(){
+    var base=new Date();base.setMinutes(0,0,0);
+    function at(d,h,m){var x=new Date(base);x.setDate(x.getDate()+d);x.setHours(h,m||0);return x;}
+    return [
+      {id:'x1',name:'Concerto d\'autunno dell\'orchestra cittadina',start:at(0,21),timeKnown:true,venue:'Teatro Comunale',city:'Esempio',dist:2.4,cat:'Musica',url:''},
+      {id:'x2',name:'Mercatino del vinile e dell\'usato',start:at(2,10),timeKnown:true,venue:'Piazza del Mercato',city:'Esempio',dist:4.1,cat:'Altro',url:''},
+      {id:'x3',name:'Derby di pallavolo femminile',start:at(3,18,30),timeKnown:true,venue:'PalaSport',city:'Esempio',dist:9.8,cat:'Sport',url:''},
+      {id:'x4',name:'Stand-up: serata di comici emergenti',start:at(5,21,15),timeKnown:true,venue:'Cinema Teatro Aurora',city:'Esempio',dist:12.6,cat:'Arte e teatro',url:''}
+    ];
+  }
+
+  function refresh(fromTimer){
+    hideNotice();
+    if(!S.key||S.lat==null){
+      sample=true;events=sampleEvents();render();
+      showNotice(S.lat==null?'Imposta la tua posizione dalle Impostazioni per cercare eventi vicino a te. Sotto vedi eventi di esempio.'
+        :'Inserisci la chiave API Ticketmaster dalle Impostazioni per vedere eventi reali. Sotto vedi eventi di esempio.',false);
+      return;
+    }
+    sample=false;$('count').textContent='Cerco eventi…';
+    fetchEvents().then(function(list){
+      events=list||[];render();
+      $('last').textContent='aggiornato '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
+      checkNotifications(events,fromTimer);
+    }).catch(function(err){
+      $('count').textContent='—';
+      showNotice((err&&err.message||'Errore di rete.')+' Riprova tra poco.',true);
+    });
+  }
+
+  /* ---------- notifiche ---------- */
+  function notify(title,body,url){
+    if(!('Notification' in window)||Notification.permission!=='granted')return;
+    var opts={body:body,tag:'eventi-vicini',data:{url:url||''}};
+    var p=('serviceWorker' in navigator)?navigator.serviceWorker.getRegistration():Promise.resolve(null);
+    p.then(function(reg){
+      if(reg&&reg.showNotification)return reg.showNotification(title,opts);
+      var n=new Notification(title,opts);n.onclick=function(){window.focus();if(url)window.open(url,'_blank');n.close();};
+    }).catch(function(){try{new Notification(title,opts);}catch(e){}});
+  }
+  function checkNotifications(list){
+    if(!S.notif)return;
+    var firstRun=S.seen.length===0;
+    var fresh=list.filter(function(e){return S.seen.indexOf(e.id)<0;});
+    list.forEach(function(e){if(S.seen.indexOf(e.id)<0)S.seen.push(e.id);});
+    if(S.seen.length>1500)S.seen=S.seen.slice(-1000);
+    if(!firstRun&&fresh.length){
+      var names=fresh.slice(0,2).map(function(e){return e.name;}).join(' · ');
+      notify(fresh.length===1?'Nuovo evento vicino a '+S.place:fresh.length+' nuovi eventi vicino a '+S.place,
+        names+(fresh.length>2?' e altri…':''),fresh[0].url);
+    }
+    var now=Date.now();
+    Object.keys(S.saved).forEach(function(id){
+      var s=S.saved[id],t=new Date(s.start).getTime();
+      if(t>now&&t-now<=3*36e5&&S.reminded.indexOf(id)<0){
+        S.reminded.push(id);
+        notify('Tra poco: '+s.name,fmtTime(new Date(s.start))+(s.venue?' · '+s.venue:''),s.url);
+      }
+    });
+    save();
+  }
+  function startTimer(){
+    if(timer){clearInterval(timer);timer=null;}
+    if(S.notif)timer=setInterval(function(){refresh(true);},S.every*60000);
+  }
+  function toggleBell(){
+    if(S.notif){S.notif=false;save();paintHeader();startTimer();return;}
+    if(!('Notification' in window)){showNotice('Questo browser non supporta le notifiche.',true);return;}
+    var go=function(perm){
+      if(perm==='granted'){S.notif=true;S.seen=[];save();paintHeader();startTimer();refresh(true);
+        notify('Avvisi attivi','Ti avviso quando compaiono nuovi eventi vicino a '+(S.place||'te')+'.');}
+      else showNotice('Notifiche bloccate. Abilitale dalle impostazioni del sito nel browser.',true);
+    };
+    var r=Notification.requestPermission(go);
+    if(r&&r.then)r.then(go);
+  }
+
+  /* ---------- interfaccia ---------- */
+  var dayFmt=new Intl.DateTimeFormat('it-IT',{weekday:'long',day:'numeric',month:'long'});
+  function fmtTime(d){return d.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});}
+  function dayLabel(d){
+    var t=new Date();t.setHours(0,0,0,0);var x=new Date(d);x.setHours(0,0,0,0);
+    var diff=Math.round((x-t)/864e5);
+    if(diff===0)return 'Oggi';if(diff===1)return 'Domani';return dayFmt.format(d);
+  }
+  function render(){
+    var list=$('list');list.textContent='';
+    $('count').textContent=events.length?events.length+(events.length===1?' evento':' eventi')+(sample?' di esempio':''):'Nessun evento';
+    if(!events.length){list.appendChild(el('div','empty','Nessun evento trovato in questo raggio. Prova ad allargarlo o ad aggiungere categorie.'));return;}
+    var cur='';
+    events.forEach(function(e){
+      var lab=dayLabel(e.start);
+      if(lab!==cur){cur=lab;list.appendChild(el('div','day',lab));}
+      var t=el('article','ticket'),stub=el('div','stub');
+      stub.appendChild(el('span','n',String(e.start.getDate())));
+      stub.appendChild(el('span','m',e.start.toLocaleDateString('it-IT',{month:'short'}).replace('.','')));
+      stub.appendChild(el('span','t',e.timeKnown?fmtTime(e.start):'—'));
+      var b=el('div','body');
+      var cat=el('div','cat',e.cat||'Evento');if(sample)cat.appendChild(el('span','tag','esempio'));
+      b.appendChild(cat);
+      b.appendChild(el('div','name',e.name));
+      b.appendChild(el('div','meta',[e.venue,e.city].filter(Boolean).join(' · ')));
+      var acts=el('div','acts'),left=el('div');
+      if(e.url){var a=el('a',null,'Biglietti e info');a.href=e.url;a.target='_blank';a.rel='noopener';left.appendChild(a);}
+      else left.appendChild(el('span','dist','—'));
+      var right=el('div');right.style.cssText='display:flex;gap:10px;align-items:center';
+      if(e.dist!=null)right.appendChild(el('span','dist',e.dist.toFixed(1).replace('.',',')+' km'));
+      var st=el('button','star',S.saved[e.id]?'★ Salvato':'☆ Ricordamelo');st.type='button';
+      st.setAttribute('aria-pressed',S.saved[e.id]?'true':'false');
+      st.addEventListener('click',function(){
+        if(S.saved[e.id]){delete S.saved[e.id];}
+        else{S.saved[e.id]={name:e.name,start:e.start.toISOString(),venue:e.venue,url:e.url};
+          if(!S.notif)showNotice('Per ricevere il promemoria attiva gli avvisi in alto a destra.',false);}
+        save();render();
+      });
+      right.appendChild(st);acts.appendChild(left);acts.appendChild(right);b.appendChild(acts);
+      t.appendChild(stub);t.appendChild(b);list.appendChild(t);
+    });
+  }
+  function paintHeader(){
+    $('where').textContent=S.place?S.place+' · '+S.radius+' km':'Posizione non impostata';
+    var b=$('bell');b.setAttribute('aria-pressed',S.notif?'true':'false');
+    $('bellText').textContent=S.notif?'Avvisi attivi':'Avvisi spenti';
+  }
+  function showNotice(msg,warn){var n=$('notice');n.textContent=msg;n.className='notice'+(warn?' warn':'');n.hidden=false;}
+  function hideNotice(){$('notice').hidden=true;}
+
+  function paintCats(){
+    var box=$('cats');box.textContent='';
+    CATS.forEach(function(c){
+      var b=el('button','chip',c.label);b.type='button';
+      b.setAttribute('aria-pressed',S.cats.indexOf(c.id)>=0?'true':'false');
+      b.addEventListener('click',function(){
+        var i=S.cats.indexOf(c.id);
+        if(i>=0){if(S.cats.length>1)S.cats.splice(i,1);}else S.cats.push(c.id);
+        save();paintCats();S.seen=[];refresh(false);
+      });
+      box.appendChild(b);
+    });
+  }
+
+  function init(){
+    $('key').value=S.key;$('radius').value=S.radius;$('radiusVal').textContent=S.radius+' km';
+    $('days').value=String(S.days);$('every').value=String(S.every);
+    if(!S.key||S.lat==null)$('settingsPanel').open=true;
+    paintHeader();paintCats();
+    $('key').addEventListener('change',function(){S.key=this.value.trim();S.seen=[];save();refresh(false);});
+    $('radius').addEventListener('input',function(){S.radius=+this.value;$('radiusVal').textContent=S.radius+' km';paintHeader();});
+    $('radius').addEventListener('change',function(){save();S.seen=[];refresh(false);});
+    $('days').addEventListener('change',function(){S.days=+this.value;save();refresh(false);});
+    $('every').addEventListener('change',function(){S.every=+this.value;save();startTimer();});
+    $('gps').addEventListener('click',useGps);
+    $('cityGo').addEventListener('click',searchCity);
+    $('city').addEventListener('keydown',function(e){if(e.key==='Enter')searchCity();});
+    $('refresh').addEventListener('click',function(){refresh(false);});
+    $('test').addEventListener('click',function(){
+      if(!('Notification' in window)){showNotice('Questo browser non supporta le notifiche.',true);return;}
+      var go=function(p){if(p==='granted')notify('Notifica di prova','Se vedi questo messaggio, gli avvisi funzionano.');
+        else showNotice('Notifiche bloccate. Abilitale dalle impostazioni del sito nel browser.',true);};
+      var r=Notification.requestPermission(go);if(r&&r.then)r.then(go);
+    });
+    $('bell').addEventListener('click',toggleBell);
+    document.addEventListener('visibilitychange',function(){if(!document.hidden&&S.notif)refresh(true);});
+    if('serviceWorker' in navigator){try{navigator.serviceWorker.register('sw.js').catch(function(){});}catch(e){}}
+    startTimer();refresh(false);
+  }
+  init();
+})();
+</script>
+</body>
+</html>
