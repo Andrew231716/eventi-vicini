@@ -52,10 +52,10 @@ details.panel>summary::after{content:"+";font-family:var(--mono);font-size:1.25r
 details.panel[open]>summary::after{content:"–"}
 .settings{padding:0 16px 16px;display:grid;gap:16px}
 .field{display:grid;gap:6px;min-width:0}
-.field>label,.field>.lbl{font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.field>label:not(.switch),.field>.lbl{font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
 .row{display:flex;gap:8px;flex-wrap:wrap}
 .row>*{min-width:0}
-input[type=text],input[type=password],input[type=date],select{width:100%;background:var(--paper);border:1.5px solid var(--line);border-radius:10px;padding:10px 12px}
+input[type=text],input[type=password],input[type=date],input[type=search],select{width:100%;background:var(--paper);border:1.5px solid var(--line);border-radius:10px;padding:10px 12px}
 input[type=range]{width:100%;accent-color:var(--accent)}
 .btn{border:1.5px solid var(--line);background:var(--paper);border-radius:10px;padding:10px 14px;cursor:pointer;font-weight:600}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
@@ -91,6 +91,12 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 .star{border:1.5px solid var(--line);background:transparent;border-radius:999px;padding:5px 12px;cursor:pointer;font-size:.85rem;font-weight:600}
 .star[aria-pressed="true"]{background:var(--stamp);border-color:var(--stamp);color:var(--stamp-ink)}
 .tag{display:inline-block;font-family:var(--mono);font-size:.7rem;border:1px solid var(--muted);color:var(--muted);border-radius:6px;padding:1px 6px;margin-left:6px;vertical-align:middle}
+.search{display:grid;gap:10px}
+.sbox{position:relative}
+.sbox input{padding-right:44px;background:var(--card)}
+.sbox input::-webkit-search-cancel-button{display:none}
+.sbox .x{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:40px;height:40px;border:0;background:transparent;color:var(--muted);font-size:1.1rem;cursor:pointer;border-radius:10px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .period{padding:14px 16px;display:grid;gap:12px}
 .pctl{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
 .pctl .field{flex:1 1 150px}
@@ -165,6 +171,15 @@ input[type=range]{width:100%;accent-color:var(--accent)}
     </div>
   </details>
 
+  <div class="search">
+    <label class="sr" for="q">Cerca eventi</label>
+    <div class="sbox">
+      <input type="search" id="q" placeholder="Cerca artista, luogo o struttura" autocomplete="off" enterkeyhint="search">
+      <button class="x" id="qClear" type="button" aria-label="Cancella la ricerca" hidden>✕</button>
+    </div>
+    <label class="switch" id="anyBox" hidden><input type="checkbox" id="anywhere"><span>Cerca ovunque<small>Ignora il raggio e la tua posizione.</small></span></label>
+  </div>
+
   <section class="panel period" aria-label="Periodo">
     <div class="chips" id="modes"></div>
     <div class="pctl" id="boxNext">
@@ -209,7 +224,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
     {id:'KZFzniwnSyZfZ7v7nn',label:'Cinema'},
     {id:'KZFzniwnSyZfZ7v7n1',label:'Altro'}
   ];
-  var DEF={key:'',lat:null,lng:null,place:'',radius:30,days:30,range:{mode:'next',day:'',month:'',from:'',to:''},every:30,cats:CATS.map(function(c){return c.id}),notif:false,known:{},rebase:true,saved:{},reminded:[],view:'all',nNew:true,nBack:true,nOnly:true};
+  var DEF={key:'',lat:null,lng:null,place:'',radius:30,q:'',anywhere:false,days:30,range:{mode:'next',day:'',month:'',from:'',to:''},every:30,cats:CATS.map(function(c){return c.id}),notif:false,known:{},rebase:true,saved:{},reminded:[],view:'all',nNew:true,nBack:true,nOnly:true};
   var S=load();
   if(S.seen&&S.seen.length){S.seen.forEach(function(id){if(!S.known[id])S.known[id]={status:null};});}
   delete S.seen;
@@ -338,30 +353,56 @@ input[type=range]{width:100%;accent-color:var(--accent)}
   function shiftDay(n){var d=parseDay(S.range.day);d.setDate(d.getDate()+n);setRange({day:ymd(d)});}
   function shiftMonth(n){var s=$('pMonth'),i=s.selectedIndex+n;if(i>=0&&i<s.options.length)setRange({month:s.options[i].value});}
 
+  function query(){return (S.q||'').trim();}
+  function canSearch(){return !!S.key&&(S.lat!=null||(!!query()&&S.anywhere));}
+  function httpCheck(r){
+    if(r.status===401)throw new Error('La chiave API non è valida.');
+    if(r.status===429)throw new Error('Troppe richieste a Ticketmaster.');
+    if(!r.ok)throw new Error('Il servizio eventi ha risposto con errore '+r.status+'.');
+    return r.json();
+  }
+  /* Cerca prima per parola chiave (eventi, artisti), poi per nome di struttura, poi per città. */
   function fetchEvents(){
-    if(!S.key||S.lat==null)return Promise.resolve(null);
+    var q=query(),geo=S.lat!=null&&!(q&&S.anywhere);
+    if(!S.key||(!geo&&!q))return Promise.resolve(null);
     var w=getWindow();
     if(!w)return Promise.reject(new Error('Periodo non valido. Scegli date comprese tra oggi e un anno da oggi.'));
-    var base='https://app.ticketmaster.com/discovery/v2/events.json?size=200&sort=date,asc&unit=km'
-      +'&apikey='+encodeURIComponent(S.key)+'&latlong='+S.lat+','+S.lng+'&radius='+S.radius
+    var key=encodeURIComponent(S.key);
+    var base='https://app.ticketmaster.com/discovery/v2/events.json?size=200&sort=date,asc&unit=km&apikey='+key
       +'&startDateTime='+iso(w.from)+'&endDateTime='+iso(w.to);
     if(S.cats.length&&S.cats.length<CATS.length)base+='&classificationId='+S.cats.join(',');
-    var seen={},out=[];truncatedOf=0;
-    function page(n){
-      return fetch(base+'&page='+n).then(function(r){
-        if(r.status===401)throw new Error('La chiave API non è valida.');
-        if(r.status===429)throw new Error('Troppe richieste a Ticketmaster.');
-        if(!r.ok)throw new Error('Il servizio eventi ha risposto con errore '+r.status+'.');
-        return r.json();
-      }).then(function(j){
-        (j._embedded&&j._embedded.events||[]).map(parse).forEach(function(e){if(e.start&&!seen[e.id]){seen[e.id]=1;out.push(e);}});
-        var pg=j.page||{},total=pg.totalElements||0,pages=pg.totalPages||1;
-        if(n+1<pages&&n+1<MAX_PAGES)return page(n+1);
-        if(n+1<pages)truncatedOf=total;
-        return out;
-      });
+    var geoQ=geo?'&latlong='+S.lat+','+S.lng+'&radius='+S.radius:'';
+    truncatedOf=0;
+    function run(extra){
+      var seen={},out=[];
+      function page(n){
+        return fetch(base+extra+'&page='+n).then(httpCheck).then(function(j){
+          (j._embedded&&j._embedded.events||[]).map(parse).forEach(function(e){if(e.start&&!seen[e.id]){seen[e.id]=1;out.push(e);}});
+          var pg=j.page||{},total=pg.totalElements||0,pages=pg.totalPages||1;
+          if(n+1<pages&&n+1<MAX_PAGES)return page(n+1);
+          truncatedOf=n+1<pages?total:0;
+          return out;
+        });
+      }
+      return page(0);
     }
-    return page(0);
+    if(!q)return run(geoQ);
+    function venueIds(){
+      return fetch('https://app.ticketmaster.com/discovery/v2/venues.json?size=10&apikey='+key+'&keyword='+encodeURIComponent(q))
+        .then(function(r){return r.ok?r.json():{};}).then(function(j){
+          return (j._embedded&&j._embedded.venues||[]).map(function(v){return v.id;});
+        }).catch(function(){return [];});
+    }
+    return run(geoQ+'&keyword='+encodeURIComponent(q)).then(function(r){
+      if(r.length)return r;
+      return venueIds().then(function(ids){return ids.length?run(geoQ+'&venueId='+ids.join(',')):[];}).then(function(r2){
+        return r2.length?r2:run('&city='+encodeURIComponent(q));
+      });
+    });
+  }
+  function filterSample(l){
+    var q=query().toLowerCase();if(!q)return l;
+    return l.filter(function(e){return (e.name+' '+e.venue+' '+e.city+' '+e.cat).toLowerCase().indexOf(q)>=0;});
   }
   function sampleEvents(){
     var base=new Date();base.setMinutes(0,0,0);
@@ -382,22 +423,26 @@ input[type=range]{width:100%;accent-color:var(--accent)}
     l[3].status='onsale';l[3].saleStart=new Date(now+3*D);
     return l;
   }
+  var reqSeq=0;
   function refresh(fromTimer){
     hideNotice();
     if(fromTimer){fixRangeDefaults();paintPeriod();}
-    if(!S.key||S.lat==null){
-      sample=true;events=decorate(sampleEvents());render();
+    if(!canSearch()){
+      reqSeq++;sample=true;events=filterSample(decorate(sampleEvents()));render();
       showNotice(S.lat==null?'Imposta la tua posizione dalle Impostazioni per cercare eventi vicino a te. Sotto vedi eventi di esempio.'
         :'Inserisci la chiave API Ticketmaster dalle Impostazioni per vedere eventi reali. Sotto vedi eventi di esempio.',false);
       return;
     }
     sample=false;$('count').textContent='Cerco eventi…';
+    var myReq=++reqSeq;
     fetchEvents().then(function(list){
+      if(myReq!==reqSeq)return;
       events=list||[];render();
       if(truncatedOf)showNotice('Ci sono '+truncatedOf+' eventi in questo periodo e ne mostro '+events.length+', i più vicini nel tempo. Restringi il periodo o il raggio per vederli tutti.',false);
       $('last').textContent='aggiornato '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
-      checkNotifications(track(events));
+      if(!query())checkNotifications(track(events));
     }).catch(function(err){
+      if(myReq!==reqSeq)return;
       $('count').textContent='—';
       showNotice((err&&err.message||'Errore di rete.')+' Riprova tra poco.',true);
     });
@@ -484,7 +529,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
     var list=$('list');list.textContent='';
     var shown=events.filter(function(e){return S.view==='new'?isNew(e):S.view==='avail'?e.status==='onsale':true;});
     $('count').textContent=shown.length?shown.length+(shown.length===1?' evento':' eventi')+(sample?' di esempio':''):'Nessun evento';
-    if(!shown.length){list.appendChild(el('div','empty',S.view==='new'?'Nessun evento nuovo negli ultimi 7 giorni in questo raggio.':S.view==='avail'?'Nessun evento con biglietti disponibili in questo raggio.':'Nessun evento trovato in questo raggio. Prova ad allargarlo o ad aggiungere categorie.'));return;}
+    if(!shown.length){list.appendChild(el('div','empty',query()?'Nessun risultato per "'+query()+'" in questo periodo. Prova ad allargare il periodo'+(S.anywhere?'.':' o a cercare ovunque.'):S.view==='new'?'Nessun evento nuovo negli ultimi 7 giorni in questo raggio.':S.view==='avail'?'Nessun evento con biglietti disponibili in questo raggio.':'Nessun evento trovato in questo raggio. Prova ad allargarlo o ad aggiungere categorie.'));return;}
     var cur='';
     shown.forEach(function(e){
       var lab=dayLabel(e.start);
@@ -564,6 +609,18 @@ input[type=range]{width:100%;accent-color:var(--accent)}
     $('every').value=String(S.every);
     if(!S.key||S.lat==null)$('settingsPanel').open=true;
     fixRangeDefaults();
+    $('q').value=S.q||'';$('anywhere').checked=!!S.anywhere;
+    $('qClear').hidden=!query();$('anyBox').hidden=!query();
+    var qTimer=null;
+    function onQ(now){
+      S.q=$('q').value;$('qClear').hidden=!query();$('anyBox').hidden=!query();
+      S.rebase=true;save();clearTimeout(qTimer);
+      if(now)refresh(false);else qTimer=setTimeout(function(){refresh(false);},500);
+    }
+    $('q').addEventListener('input',function(){onQ(false);});
+    $('q').addEventListener('keydown',function(e){if(e.key==='Enter'){onQ(true);this.blur();}});
+    $('qClear').addEventListener('click',function(){$('q').value='';onQ(true);$('q').focus();});
+    $('anywhere').addEventListener('change',function(){S.anywhere=this.checked;S.rebase=true;save();refresh(false);});
     paintHeader();paintCats();paintTabs();paintPeriod();
     $('pDays').addEventListener('change',function(){S.days=+this.value;S.rebase=true;save();paintPeriod();refresh(false);});
     $('pDay').addEventListener('change',function(){if(this.value)setRange({day:this.value});});
