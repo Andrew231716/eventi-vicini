@@ -527,9 +527,9 @@ input[type=range]{width:100%;accent-color:var(--accent)}
   }
   function render(){
     var list=$('list');list.textContent='';
-    var shown=events.filter(function(e){return S.view==='new'?isNew(e):S.view==='avail'?e.status==='onsale':true;});
+    var shown=S.view==='fav'?favList():events.filter(function(e){return S.view==='new'?isNew(e):S.view==='avail'?e.status==='onsale':true;});
     $('count').textContent=shown.length?shown.length+(shown.length===1?' evento':' eventi')+(sample?' di esempio':''):'Nessun evento';
-    if(!shown.length){list.appendChild(el('div','empty',query()?'Nessun risultato per "'+query()+'" in questo periodo. Prova ad allargare il periodo'+(S.anywhere?'.':' o a cercare ovunque.'):S.view==='new'?'Nessun evento nuovo negli ultimi 7 giorni in questo raggio.':S.view==='avail'?'Nessun evento con biglietti disponibili in questo raggio.':'Nessun evento trovato in questo raggio. Prova ad allargarlo o ad aggiungere categorie.'));return;}
+    if(!shown.length){list.appendChild(el('div','empty',S.view==='fav'?'Non hai ancora eventi preferiti in arrivo. Tocca la stella su un evento per salvarlo qui.':query()?'Nessun risultato per "'+query()+'" in questo periodo. Prova ad allargare il periodo'+(S.anywhere?'.':' o a cercare ovunque.'):S.view==='new'?'Nessun evento nuovo negli ultimi 7 giorni in questo raggio.':S.view==='avail'?'Nessun evento con biglietti disponibili in questo raggio.':'Nessun evento trovato in questo raggio. Prova ad allargarlo o ad aggiungere categorie.'));return;}
     var cur='';
     shown.forEach(function(e){
       var lab=dayLabel(e.start);
@@ -539,7 +539,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
       stub.appendChild(el('span','m',e.start.toLocaleDateString('it-IT',{month:'short'}).replace('.','')));
       stub.appendChild(el('span','t',e.timeKnown?fmtTime(e.start):'—'));
       var b=el('div','body');
-      var cat=el('div','cat',e.cat||'Evento');if(sample)cat.appendChild(el('span','tag','esempio'));
+      var cat=el('div','cat',e.cat||'Evento');if(sample&&S.view!=='fav')cat.appendChild(el('span','tag','esempio'));
       b.appendChild(cat);
       b.appendChild(el('div','name',e.name));
       b.appendChild(el('div','meta',[e.venue,e.city].filter(Boolean).join(' · ')));
@@ -549,13 +549,13 @@ input[type=range]{width:100%;accent-color:var(--accent)}
       else left.appendChild(el('span','dist','—'));
       var right=el('div');right.style.cssText='display:flex;gap:10px;align-items:center';
       if(e.dist!=null)right.appendChild(el('span','dist',e.dist.toFixed(1).replace('.',',')+' km'));
-      var st=el('button','star',S.saved[e.id]?'★ Salvato':'☆ Ricordamelo');st.type='button';
+      var st=el('button','star',S.saved[e.id]?'★ Preferito':'☆ Aggiungi');st.type='button';
       st.setAttribute('aria-pressed',S.saved[e.id]?'true':'false');
       st.addEventListener('click',function(){
         if(S.saved[e.id]){delete S.saved[e.id];}
-        else{S.saved[e.id]={name:e.name,start:e.start.toISOString(),venue:e.venue,url:e.url};
-          if(!S.notif)showNotice('Per ricevere il promemoria attiva gli avvisi in alto a destra.',false);}
-        save();render();
+        else{S.saved[e.id]={name:e.name,start:e.start.toISOString(),venue:e.venue,city:e.city,cat:e.cat,timeKnown:e.timeKnown,url:e.url};
+          if(!S.notif)showNotice('Aggiunto ai preferiti. Per ricevere il promemoria prima dell\'inizio attiva gli avvisi in alto a destra.',false);}
+        save();paintTabs();render();
       });
       right.appendChild(st);acts.appendChild(left);acts.appendChild(right);b.appendChild(acts);
       t.appendChild(stub);t.appendChild(b);list.appendChild(t);
@@ -573,9 +573,19 @@ input[type=range]{width:100%;accent-color:var(--accent)}
     else if(e.status==='rescheduled')w.appendChild(el('span','badge','Data cambiata'));
     return w;
   }
+  /* Preferiti: eventi salvati con la stella, anche fuori dalla ricerca attuale. */
+  function favList(){
+    var limit=Date.now()-3*36e5;
+    return Object.keys(S.saved).map(function(id){
+      var s=S.saved[id];
+      return {id:id,name:s.name,start:new Date(s.start),timeKnown:s.timeKnown!==false,venue:s.venue||'',city:s.city||'',
+        dist:null,cat:s.cat||'',url:s.url||'',status:'',saleStart:null};
+    }).filter(function(e){return e.start.getTime()>limit;}).sort(function(a,b){return a.start-b.start;});
+  }
   function paintTabs(){
     var box=$('tabs');box.textContent='';
-    [['all','Tutti'],['new','Nuovi'],['avail','Con biglietti']].forEach(function(t){
+    var nf=favList().length;
+    [['all','Tutti'],['new','Nuovi'],['avail','Con biglietti'],['fav','★ Preferiti'+(nf?' ('+nf+')':'')]].forEach(function(t){
       var b=el('button','chip',t[1]);b.type='button';
       b.setAttribute('aria-pressed',S.view===t[0]?'true':'false');
       b.addEventListener('click',function(){S.view=t[0];save();paintTabs();render();});
